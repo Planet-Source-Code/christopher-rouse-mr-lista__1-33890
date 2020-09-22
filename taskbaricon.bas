@@ -1,0 +1,192 @@
+Attribute VB_Name = "Module2"
+'------------------------------------------------------------
+'This sample application demonstrates general procedures for
+'installing and maintaining an icon in the Win95 toolbar Notification
+'Area (also known as the Tray) from a VB5 program.
+'-------------------------------------------------------------------
+'Copyright 1995-1997 by Don Bradner.  May be freely distributed
+'Author contact: CIS 76130,1007; internet dbirdman@arcatapet.com
+'www.arcatapet.com/vb.html.  Support available as time
+'allows, including the VBPJ and BASLANG forums on Compuserve.
+
+Option Explicit
+Declare Function SetWindowLong Lib "user32" Alias "SetWindowLongA" (ByVal hwnd As Long, ByVal nIndex As Long, ByVal dwNewLong As Any) As Long
+Declare Function CallWindowProc Lib "user32" Alias "CallWindowProcA" (ByVal wndrpcPrev As Long, ByVal hwnd As Long, ByVal uMsg As Long, ByVal wParam As Long, lParam As Any) As Long
+Public Const GWL_WNDPROC = -4
+Private m_wndprcNext&
+
+'-----------------------------------------------------------
+'The 10 available mouse events:
+'-----------------------------------------------------------
+Const WM_MOUSEMOVE = &H200
+Const WM_LBUTTONDOWN = &H201
+Const WM_LBUTTONUP = &H202
+Const WM_LBUTTONDBLCLK = &H203
+Const WM_RBUTTONDOWN = &H204
+Const WM_RBUTTONUP = &H205
+Const WM_RBUTTONDBLCLK = &H206
+Const WM_MBUTTONDOWN = &H207
+Const WM_MBUTTONUP = &H208
+Const WM_MBUTTONDBLCLK = &H209
+' -----------------------------------------------------------
+' NOTIFYICONDATA type is needed for Shell_NotifyIcon function
+'------------------------------------------------------------
+
+Private Type NOTIFYICONDATA
+    lStructureSize    As Long
+    hwnd   As Long
+    lID As Long
+    lFlags As Long
+    lCallBackMessage As Long
+    hIcon As Long
+    sTip As String * 64
+End Type
+
+' -----------------------------------------------------------
+' lRect type and AppBarData are needed for SHAppBarMessage function
+'------------------------------------------------------------
+Private Type lRect
+    Left As Long
+    Top As Long
+    Right As Long
+    Bottom As Long
+End Type
+
+Private Type APPBARDATA
+    lStructureSize As Long
+    hwnd As Long
+    lCallBackMessage As Long
+    lEdge As Long
+    rc As lRect
+    lParam As Long
+End Type
+
+Private Declare Function Shell_NotifyIcon& Lib "shell32.dll" (ByVal lMessage&, NID As NOTIFYICONDATA)
+Private Declare Function SHAppBarMessage& Lib "shell32.dll" (ByVal dwMessage&, pData As APPBARDATA)
+
+Private Const NIM_ADD = 0&
+Private Const NIM_DELETE = 2&
+Private Const NIM_MODIFY = 1&
+Public Const NIF_ICON = 2&
+Public Const NIF_MESSAGE = 1&
+Public Const NIF_TIP = 4&
+
+Private Const ABM_GETTASKBARPOS = &H5&
+Public structNotify As NOTIFYICONDATA
+Private structBarData As APPBARDATA
+
+Private Const WM_USER = &H400
+Public Const UM_TASKBARMESSAGE = WM_USER + &H201
+
+Public lTemplong&
+Public Function AppBarExists&()
+    '--------------------------------------------------------
+    'Since a user may be running 32-bit Windows but not be using
+    'the Explorer shell, we use the SHAppBarMessage call to determine
+    'whether there is a system taskbar.
+    '---------------------------------------------------------
+    structBarData.lStructureSize = 36&
+    AppBarExists = SHAppBarMessage(ABM_GETTASKBARPOS, structBarData)
+End Function
+
+Public Sub ChangeIcon(lID&, hIcon)
+    structNotify.lID = lID
+    structNotify.hIcon = hIcon
+    structNotify.lFlags = NIF_ICON
+    lTemplong = Shell_NotifyIcon(NIM_MODIFY, structNotify)
+End Sub
+
+Public Sub ChangeMessage(lID&, sNewMessage$)
+    structNotify.lID = lID
+    structNotify.sTip = sNewMessage & Chr$(0)
+    structNotify.lFlags = NIF_TIP
+    lTemplong = Shell_NotifyIcon(NIM_MODIFY, structNotify)
+End Sub
+
+Public Sub DeleteIcon(lID&)
+    structNotify.lID = lID
+    lTemplong = Shell_NotifyIcon(NIM_DELETE, structNotify)
+End Sub
+
+Public Sub RemoveAllIcons(iTotal&)
+Dim lRet&
+For lTemplong = 1 To iTotal
+    structNotify.lID = lTemplong
+    lRet = Shell_NotifyIcon(NIM_DELETE, structNotify)
+Next lTemplong
+End Sub
+
+
+
+Public Sub AddIcon(lID&, sTip$, hIcon)
+    structNotify.lID = lID
+    structNotify.hIcon = hIcon
+    structNotify.sTip = sTip & Chr$(0)
+    structNotify.lFlags = NIF_ICON Or NIF_MESSAGE Or NIF_TIP
+    lTemplong = Shell_NotifyIcon(NIM_ADD, structNotify)
+End Sub
+
+Sub SubClass(hwnd&)
+    m_wndprcNext = SetWindowLong(hwnd, GWL_WNDPROC, AddressOf CtlProc)
+End Sub
+Public Sub UnSubClass(hWndCur&)
+    If m_wndprcNext Then
+        SetWindowLong hWndCur, GWL_WNDPROC, m_wndprcNext
+        m_wndprcNext = 0
+    End If
+End Sub
+
+Public Function CtlProc(ByVal hwnd As Long, ByVal MsgVal As Long, ByVal wParam As Long, ByVal lParam As Long) As Long
+If m_wndprcNext = 0 Then
+    CtlProc = 0
+    Exit Function
+End If
+    If MsgVal = UM_TASKBARMESSAGE Then
+    Dim ListItem$
+     
+    '--------------------------------------------------------------------------
+    'Using the TaskBar Tray for any purpose other than signaling requires that
+    'we be able to receive messages generated by the system when there are mouse
+    'events associated with the Notification Area icons.  With prior versions of
+    'Visual Basic it was necessary to use a subclassing tool, but VB5 has an
+    'AddressOf operator that makes this sort of subclassing possible.
+    '---------------------------------------------------------------------------
+    
+    '--------------------------------------------------------------------------
+    'These are all of the possible messages sent to our program from the
+    'TaskBar Notification Area icons.
+    '--------------------------------------------------------------------------
+        Select Case lParam
+            Case WM_MOUSEMOVE
+                ListItem = "MOUSEMOVE"
+            Case WM_RBUTTONDBLCLK
+                ListItem = "RBUTTONDBLCLK"
+            Case WM_RBUTTONDOWN
+                ListItem = "RBUTTONDOWN"
+            Case WM_RBUTTONUP
+                ListItem = "RBUTTONUP"
+            Case WM_MBUTTONDBLCLK
+                ListItem = "MBUTTONDBLCLK"
+            Case WM_MBUTTONDOWN
+                ListItem = "MBUTTONDOWN"
+            Case WM_MBUTTONUP
+                ListItem = "MBUTTONUP"
+            Case WM_LBUTTONDBLCLK
+                ListItem = "LBUTTONDBLCLK"
+            Case WM_LBUTTONDOWN
+                Form1.Show: Form1.Enabled = True: DeleteIcon (1)
+            Case WM_LBUTTONUP
+                ListItem = "LBUTTONUP"
+            Case Else
+                'Don't know of any, but this will show them
+                ListItem = "Unknown": Rem & Str$(lParam)
+        End Select
+       
+  End If
+    'pass all messages along to the subclassed form for default processing
+    CtlProc = CallWindowProc(m_wndprcNext, hwnd, MsgVal, wParam, ByVal lParam)
+
+End Function
+
+
+
